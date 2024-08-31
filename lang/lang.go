@@ -39,19 +39,15 @@ type RawText struct {
 	RawText []*RawMessage `json:"rawtext,omitempty"`
 }
 
-type PackConfig struct {
-	Urls  []string
-	Paths []string
-}
-
-func Translate(textOrJsonRawText string, toLocale string) string {
+// Translates plain text like "string" or json rawtext like "{"rawtext":{"translate":"this.is.rawtext"}}" into text
+func Translate(stringOrJsonRawText string, toLocale string) string {
 	txts := langs[toLocale]
 
 	parsed := RawText{}
-	err := json.Unmarshal([]byte(textOrJsonRawText), &parsed)
+	err := json.Unmarshal([]byte(stringOrJsonRawText), &parsed)
 	if err != nil {
 		// Common text
-		return textOrJsonRawText
+		return stringOrJsonRawText
 	} else {
 		// RawText
 		var result = ""
@@ -60,79 +56,8 @@ func Translate(textOrJsonRawText string, toLocale string) string {
 	}
 }
 
-func (text *RawText) toString(result *string, langMap *LangMap) {
-	for _, t := range text.RawText {
-		t.toString(result, langMap)
-	}
-}
-
-func (message *RawMessage) toString(result *string, langMap *LangMap) {
-	if message.Text != nil && *message.Text != "" {
-		*result += *message.Text
-	}
-
-	if message.Translate != nil && *message.Translate != "" {
-		translated := (*langMap)[*message.Translate]
-
-		if translated == "" {
-			translated = (langs)[defaultLocale][*message.Translate]
-		}
-
-		if translated != "" {
-			if message.With != nil {
-				parsedWith := []any{}
-				switch with := message.With.(type) {
-				case []interface{}:
-					parsedWith = make([]any, len(with))
-					copy(parsedWith, with)
-				case map[string]any:
-					stringWith, err := json.Marshal(with)
-					if err != nil {
-						panic(err)
-					}
-					text := RawText{}
-					err = json.Unmarshal(stringWith, &text)
-					if err != nil {
-						panic(err)
-					}
-
-					parsedWith = make([]any, len(text.RawText))
-					for i, rawmessage := range text.RawText {
-						var message = ""
-						rawmessage.toString(&message, langMap)
-						parsedWith[i] = message
-					}
-				default:
-					fmt.Println("unkown RawMessage.With type:", reflect.TypeOf(with), with)
-				}
-
-				*result += fmt.Sprintf(translated, parsedWith...)
-			} else {
-				*result += translated
-			}
-		} else {
-			fmt.Println("unkown translation token:", *message.Translate)
-			*result += "%" + *message.Translate
-		}
-
-		return
-	}
-
-	if message.RawText != nil {
-		for _, tt := range message.RawText {
-			tt.toString(result, langMap)
-		}
-		return
-	}
-
-	stringified, err := json.MarshalIndent(message, "", " ")
-	if err != nil {
-		fmt.Println("possibly empty json invalid RawMessage:", message)
-	} else {
-		fmt.Println("possibly empty RawMessage:", string(stringified))
-	}
-}
-
+// Retrieves all packs from urls and paths, parses lang files and keeps parsed
+// Content in memory to be later used by lang.Translate function
 func GetLangsFromPackConfig(config utils.Config) {
 	readAndParseFromArray(&config.Resources.PackURLs, getLangsFromMcpackUrl)
 	readAndParseFromArray(&config.Resources.PackPaths, getLangsFromPackPath)
@@ -258,4 +183,77 @@ func getLangsFromMcpackUrl(url string) (*Langs, error) {
 		}
 	}
 	return &langs, nil
+}
+
+func (text *RawText) toString(result *string, langMap *LangMap) {
+	for _, t := range text.RawText {
+		t.toString(result, langMap)
+	}
+}
+
+func (message *RawMessage) toString(result *string, langMap *LangMap) {
+	if message.Text != nil && *message.Text != "" {
+		*result += *message.Text
+	}
+
+	if message.Translate != nil && *message.Translate != "" {
+		translated := (*langMap)[*message.Translate]
+
+		if translated == "" {
+			translated = (langs)[defaultLocale][*message.Translate]
+		}
+
+		if translated != "" {
+			if message.With != nil {
+				parsedWith := []any{}
+				switch with := message.With.(type) {
+				case []interface{}:
+					parsedWith = make([]any, len(with))
+					copy(parsedWith, with)
+				case map[string]any:
+					stringWith, err := json.Marshal(with)
+					if err != nil {
+						panic(err)
+					}
+					text := RawText{}
+					err = json.Unmarshal(stringWith, &text)
+					if err != nil {
+						panic(err)
+					}
+
+					parsedWith = make([]any, len(text.RawText))
+					for i, rawmessage := range text.RawText {
+						var message = ""
+						rawmessage.toString(&message, langMap)
+						parsedWith[i] = message
+					}
+				default:
+					fmt.Println("unkown RawMessage.With type:", reflect.TypeOf(with), with)
+				}
+
+				*result += fmt.Sprintf(translated, parsedWith...)
+			} else {
+				*result += translated
+			}
+		} else {
+			fmt.Println("unkown translation token:", *message.Translate)
+			*result += "%" + *message.Translate
+		}
+
+		return
+	}
+
+	if message.RawText != nil {
+		for _, tt := range message.RawText {
+			tt.toString(result, langMap)
+		}
+		return
+	}
+
+	stringified, err := json.MarshalIndent(message, "", " ")
+	if err != nil {
+		fmt.Println("possibly empty json invalid RawMessage:", message)
+	} else {
+		fmt.Println("possibly empty RawMessage:", string(stringified))
+	}
 }
